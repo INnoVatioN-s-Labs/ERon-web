@@ -5,6 +5,7 @@ const seasonId = Number(import.meta.env.VITE_ER_SEASON_ID ?? DEFAULT_SEASON_ID)
 const matchingTeamMode = Number(
   import.meta.env.VITE_ER_MATCHING_TEAM_MODE ?? DEFAULT_MATCHING_TEAM_MODE,
 )
+const matchLimit = Number(import.meta.env.VITE_ER_MATCH_LIMIT ?? 50)
 
 export const apiEndpoints = {
   rankingTop10: [
@@ -14,8 +15,13 @@ export const apiEndpoints = {
     const encodedNickname = encodeURIComponent(nickname)
 
     return [
-      `/api/er/users/overview?nickname=${encodedNickname}&seasonId=${seasonId}&matchingTeamMode=${matchingTeamMode}`,
+      `/api/er/users/overview?nickname=${encodedNickname}&seasonId=${seasonId}&matchingTeamMode=${matchingTeamMode}&limit=${matchLimit}&count=${matchLimit}&size=${matchLimit}`,
     ]
   },
   matchDetail: (gameId: string | number) => `/api/er/games/${gameId}`,
+  playerGames: (userId: string, next?: string) => {
+    const query = next ? `?next=${encodeURIComponent(next)}` : ''
+
+    return `/api/er/users/${encodeURIComponent(userId)}/games${query}`
+  },
 }

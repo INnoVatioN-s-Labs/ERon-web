@@ -14,6 +14,10 @@ const badgeVariants = cva(
           'border-transparent bg-[hsl(var(--success))] text-[hsl(var(--success-foreground))]',
         warning:
           'border-transparent bg-[hsl(var(--warning))] text-[hsl(var(--warning-foreground))]',
+        win: 'border-transparent bg-emerald-500 text-slate-950',
+        podium: 'border-transparent bg-sky-500 text-slate-950',
+        loss: 'border-transparent bg-slate-600 text-slate-50',
+        escape: 'border-transparent bg-violet-500 text-white',
       },
     },
     defaultVariants: {

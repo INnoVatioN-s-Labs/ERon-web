@@ -28,6 +28,9 @@ export type PlayerSeasonStats = {
 export type PlayerMatch = {
   matchId: string
   mode: string
+  matchingMode?: number
+  matchingTeamMode?: number
+  seasonId?: number
   character: string
   rank: number
   kills: number
@@ -38,7 +41,11 @@ export type PlayerMatch = {
   animalKills?: number
   credits?: number
   vision?: number
+  rankPoint?: number
   mmrGain?: number
+  victory?: number
+  outcome?: string
+  escape?: boolean
   playedAt: string
 }
 
@@ -46,4 +53,5 @@ export type PlayerSearchResult = {
   profile: PlayerProfile
   stats?: PlayerSeasonStats
   matches: PlayerMatch[]
+  next?: string
 }
