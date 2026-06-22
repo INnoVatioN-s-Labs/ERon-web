@@ -1,8 +1,26 @@
 import { useQuery } from '@tanstack/react-query'
 import { apiEndpoints } from '@/shared/api/endpoints'
 import { requestJson } from '@/shared/api/http-client'
-import { asNumber, asString, isRecord } from '@/shared/lib/object'
+import { asArray, asNumber, asString, isRecord, unwrapApiData } from '@/shared/lib/object'
 import type { EquipmentSummary, MatchDetail, MatchParticipant } from './types'
+
+function asBoolean(value: unknown) {
+  return typeof value === 'boolean' ? value : undefined
+}
+
+function asOptionalNumber(value: unknown) {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value
+  }
+
+  if (typeof value === 'string') {
+    const numericValue = Number(value)
+
+    return Number.isFinite(numericValue) ? numericValue : undefined
+  }
+
+  return undefined
+}
 
 function normalizeEquipment(value: unknown): Record<string, EquipmentSummary> {
   if (!isRecord(value)) {
@@ -37,12 +55,13 @@ function normalizeParticipant(value: unknown): MatchParticipant {
   }
 
   return {
-    nickname: asString(value.nickname),
-    teamNumber: asNumber(value.teamNumber, 0) || undefined,
-    gameRank: asNumber(value.gameRank, 0) || undefined,
-    characterNum: asNumber(value.characterNum, 0) || undefined,
-    characterName: asString(value.characterName),
-    characterLevel: asNumber(value.characterLevel, 0) || undefined,
+    nickname: asString(value.nickname ?? value.userNickname ?? value.user_nickname),
+    teamNumber: asNumber(value.teamNumber ?? value.team_number, 0) || undefined,
+    gameRank: asNumber(value.gameRank ?? value.game_rank, 0) || undefined,
+    characterNum: asNumber(value.characterNum ?? value.character_num, 0) || undefined,
+    characterName: asString(value.characterName ?? value.character_name),
+    characterLevel:
+      asNumber(value.characterLevel ?? value.character_level, 0) || undefined,
     kills: asNumber(value.playerKill ?? value.kills),
     deaths: asNumber(value.playerDeaths ?? value.deaths),
     assists: asNumber(value.playerAssistant ?? value.assists),
@@ -56,7 +75,9 @@ function normalizeParticipant(value: unknown): MatchParticipant {
     bestWeapon: asNumber(value.bestWeapon, 0) || undefined,
     bestWeaponLevel: asNumber(value.bestWeaponLevel, 0) || undefined,
     rankPoint: asNumber(value.rankPoint, 0) || undefined,
-    victory: asNumber(value.victory, 0) || undefined,
+    victory: asOptionalNumber(value.victory),
+    outcome: asString(value.outcome ?? value.result ?? value.gameResult),
+    escape: asBoolean(value.escape ?? value.isEscape ?? value.is_escape),
     playTime: asNumber(value.playTime, 0) || undefined,
     tacticalSkill: asString(value.tacticalSkill ?? value.tacticalSkillName),
     equipment: normalizeEquipment(value.equipment),
@@ -64,23 +85,30 @@ function normalizeParticipant(value: unknown): MatchParticipant {
 }
 
 function normalizeMatchDetail(value: unknown): MatchDetail {
-  if (!isRecord(value)) {
+  const data = unwrapApiData(value)
+
+  if (!isRecord(data)) {
     throw new Error('Invalid match detail response')
   }
 
+  const participants = asArray(
+    data.participants ?? data.userGames ?? data.user_games ?? data.players,
+  ).map(normalizeParticipant)
+
   return {
-    gameId: asNumber(value.gameId),
-    seasonId: asNumber(value.seasonId, 0) || undefined,
-    matchingMode: asNumber(value.matchingMode, 0) || undefined,
-    matchingTeamMode: asNumber(value.matchingTeamMode, 0) || undefined,
-    startDtm: asString(value.startDtm),
-    duration: asNumber(value.duration, 0) || undefined,
-    playTime: asNumber(value.playTime, 0) || undefined,
-    matchSize: asNumber(value.matchSize, 0) || undefined,
-    participantCount: asNumber(value.participantCount),
-    participants: Array.isArray(value.participants)
-      ? value.participants.map(normalizeParticipant)
-      : [],
+    gameId: asNumber(data.gameId ?? data.game_id),
+    seasonId: asNumber(data.seasonId ?? data.season_id, 0) || undefined,
+    matchingMode: asNumber(data.matchingMode ?? data.matching_mode, 0) || undefined,
+    matchingTeamMode:
+      asNumber(data.matchingTeamMode ?? data.matching_team_mode, 0) || undefined,
+    startDtm: asString(data.startDtm ?? data.start_dtm ?? data.startedAt),
+    duration: asNumber(data.duration, 0) || undefined,
+    playTime: asNumber(data.playTime ?? data.play_time, 0) || undefined,
+    matchSize: asNumber(data.matchSize ?? data.match_size, 0) || undefined,
+    participantCount:
+      asNumber(data.participantCount ?? data.participant_count, 0) ||
+      participants.length,
+    participants,
   }
 }
 

@@ -52,6 +52,7 @@ export function PlayerPage() {
         <PlayerSearchResultView
           error={playerQuery.error}
           isLoading={playerQuery.isFetching}
+          key={decodedNickname}
           result={playerQuery.data}
           searchedNickname={decodedNickname}
         />

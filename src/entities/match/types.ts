@@ -25,6 +25,8 @@ export type MatchParticipant = {
   bestWeaponLevel?: number
   rankPoint?: number
   victory?: number
+  outcome?: string
+  escape?: boolean
   playTime?: number
   tacticalSkill?: string
   equipment: Record<string, EquipmentSummary>

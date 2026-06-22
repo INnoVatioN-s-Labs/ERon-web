@@ -1,8 +1,11 @@
 import { ChevronDown } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useMatchDetail } from '@/entities/match/api'
 import type { MatchDetail, MatchParticipant } from '@/entities/match/types'
+import { loadPlayerMatches } from '@/entities/player/api'
 import type { PlayerMatch, PlayerSearchResult } from '@/entities/player/types'
+import { cn } from '@/shared/lib/utils'
 import { Badge } from '@/shared/ui/badge'
 import { Button } from '@/shared/ui/button'
 import {
@@ -28,12 +31,41 @@ type PlayerSearchResultProps = {
   searchedNickname: string
 }
 
+type MatchFilter = 'all' | 'ranked' | 'normal' | 'cobalt' | 'loneWolf' | 'union' | 'cobaltUnion'
+
+const MATCH_FILTERS: { key: MatchFilter; label: string }[] = [
+  { key: 'all', label: '전체' },
+  { key: 'ranked', label: '랭크' },
+  { key: 'normal', label: '일반' },
+  { key: 'cobalt', label: '코발트' },
+  { key: 'loneWolf', label: '론울프' },
+  { key: 'union', label: '유니온' },
+  { key: 'cobaltUnion', label: '코발트 유니온' },
+]
+const INITIAL_VISIBLE_MATCH_COUNT = 10
+const MATCH_LOAD_STEP = 10
+const FILTER_PREFETCH_PAGE_LIMIT = 5
+
 export function PlayerSearchResultView({
   error,
   isLoading = false,
   result,
   searchedNickname,
 }: PlayerSearchResultProps) {
+  const [selectedMatchFilter, setSelectedMatchFilter] = useState<MatchFilter>('all')
+  const [visibleMatchCount, setVisibleMatchCount] = useState(INITIAL_VISIBLE_MATCH_COUNT)
+  const [loadedMatches, setLoadedMatches] = useState<PlayerMatch[]>([])
+  const [nextCursor, setNextCursor] = useState('')
+  const [isLoadingMore, setIsLoadingMore] = useState(false)
+  const [loadMoreError, setLoadMoreError] = useState('')
+
+  useEffect(() => {
+    setLoadedMatches(result?.matches ?? [])
+    setNextCursor(result?.next ?? '')
+    setVisibleMatchCount(INITIAL_VISIBLE_MATCH_COUNT)
+    setLoadMoreError('')
+  }, [result])
+
   if (!searchedNickname) {
     return (
       <StateCard
@@ -73,7 +105,62 @@ export function PlayerSearchResultView({
     return null
   }
 
-  const characterStats = getCharacterStats(result.matches)
+  const userId = result.profile.userId
+
+  async function loadMoreMatchPages(
+    options: { ensureVisibleCount?: number; filter?: MatchFilter } = {},
+  ) {
+    const ensureVisibleCount = options.ensureVisibleCount ?? 0
+    const targetFilter = options.filter ?? selectedMatchFilter
+    let cursor = nextCursor
+    let nextMatches = loadedMatches
+    let pagesLoaded = 0
+
+    if (!userId || !cursor || isLoadingMore) {
+      return
+    }
+
+    setIsLoadingMore(true)
+    setLoadMoreError('')
+    try {
+      while (cursor && pagesLoaded < FILTER_PREFETCH_PAGE_LIMIT) {
+        const nextPage = await loadPlayerMatches(userId, cursor)
+        nextMatches = [...nextMatches, ...nextPage.matches]
+        cursor = nextPage.next ?? ''
+        pagesLoaded += 1
+
+        const nextFilteredMatches = filterMatches(nextMatches, targetFilter)
+        if (nextFilteredMatches.length >= ensureVisibleCount || !cursor) {
+          break
+        }
+      }
+
+      setLoadedMatches(nextMatches)
+      setNextCursor(cursor)
+    } catch (loadError) {
+      setLoadMoreError(loadError instanceof Error ? loadError.message : String(loadError))
+    } finally {
+      setIsLoadingMore(false)
+    }
+  }
+
+  async function handleLoadMoreMatches() {
+    if (visibleMatchCount < filteredMatches.length) {
+      setVisibleMatchCount((count) => count + MATCH_LOAD_STEP)
+      return
+    }
+    if (!userId || !nextCursor || isLoadingMore) {
+      return
+    }
+
+    await loadMoreMatchPages({ ensureVisibleCount: visibleMatchCount + MATCH_LOAD_STEP })
+    setVisibleMatchCount((count) => count + MATCH_LOAD_STEP)
+  }
+
+  const characterStats = getCharacterStats(loadedMatches)
+  const filteredMatches = filterMatches(loadedMatches, selectedMatchFilter)
+  const visibleMatches = filteredMatches.slice(0, visibleMatchCount)
+  const hasMoreMatches = visibleMatchCount < filteredMatches.length || Boolean(nextCursor)
 
   return (
     <div className="grid gap-5 lg:grid-cols-[0.92fr_1.08fr]">
@@ -96,10 +183,10 @@ export function PlayerSearchResultView({
         </CardHeader>
         <CardContent className="space-y-5">
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-            <Stat label="티어" value={result.profile.rank ? `#${result.profile.rank}` : '-'} />
+            <Stat label="랭킹" value={result.profile.rank ? `#${result.profile.rank}` : '-'} />
             <Stat label="평균 TK" value={formatNumber(result.stats?.averageTeamKills)} />
             <Stat label="승률" value={formatPercent(result.stats?.winRate)} />
-            <Stat label="게임 수" value={formatInteger(result.stats?.totalGames)} />
+            <Stat label="시즌 게임 수" value={formatInteger(result.stats?.totalGames)} />
             <Stat label="평균 킬" value={formatNumber(result.stats?.averageKills)} />
             <Stat label="TOP2" value={formatPercent(result.stats?.top2Rate)} />
             <Stat label="평균 딜량" value={formatInteger(result.stats?.averageDamage)} />
@@ -113,9 +200,9 @@ export function PlayerSearchResultView({
 
           <section>
             <div className="mb-3 flex items-center justify-between gap-3">
-              <h3 className="text-sm font-semibold">랭크 실험체 통계</h3>
+              <h3 className="text-sm font-semibold">최근 경기 실험체 통계</h3>
               <span className="text-xs text-muted-foreground">
-                최근 {result.matches.length}게임
+                최근 {loadedMatches.length}게임
               </span>
             </div>
             <div className="space-y-2">
@@ -153,14 +240,72 @@ export function PlayerSearchResultView({
           <CardDescription>실험체별 경기 기록</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
-          {result.matches.length > 0 ? (
-            result.matches.map((match) => (
-              <MatchPanel key={match.matchId || `${match.character}-${match.playedAt}`} match={match} />
-            ))
+          <div className="flex flex-wrap gap-2">
+            {MATCH_FILTERS.map((filter) => {
+              const isSelected = selectedMatchFilter === filter.key
+
+              return (
+                <Button
+                  className="h-8 px-3 text-xs"
+                  key={filter.key}
+                  size="sm"
+                  type="button"
+                  variant={isSelected ? 'default' : 'outline'}
+                  onClick={() => {
+                    setSelectedMatchFilter(filter.key)
+                    setVisibleMatchCount(INITIAL_VISIBLE_MATCH_COUNT)
+                    if (filter.key !== selectedMatchFilter && nextCursor) {
+                      void loadMoreMatchPages({
+                        ensureVisibleCount: INITIAL_VISIBLE_MATCH_COUNT,
+                        filter: filter.key,
+                      })
+                    }
+                  }}
+                >
+                  {filter.label}
+                </Button>
+              )
+            })}
+          </div>
+          {visibleMatches.length > 0 ? (
+            <>
+              {visibleMatches.map((match) => (
+                <MatchPanel key={match.matchId || `${match.character}-${match.playedAt}`} match={match} />
+              ))}
+              {loadMoreError ? (
+                <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
+                  추가 전적을 불러오지 못했습니다: {loadMoreError}
+                </div>
+              ) : null}
+              <Button
+                className="w-full"
+                disabled={!hasMoreMatches || isLoadingMore}
+                type="button"
+                variant="outline"
+                onClick={handleLoadMoreMatches}
+              >
+                {isLoadingMore ? '불러오는 중' : hasMoreMatches ? '더 보기' : '추가 전적 없음'}
+                <ChevronDown />
+              </Button>
+            </>
           ) : (
-            <div className="rounded-lg border border-border/80 bg-muted/35 p-5 text-sm text-muted-foreground">
-              최근 경기 데이터가 없습니다.
-            </div>
+            <>
+              <div className="rounded-lg border border-border/80 bg-muted/35 p-5 text-sm text-muted-foreground">
+                선택한 분류의 최근 경기 데이터가 없습니다.
+              </div>
+              {nextCursor ? (
+                <Button
+                  className="w-full"
+                  disabled={isLoadingMore}
+                  type="button"
+                  variant="outline"
+                  onClick={handleLoadMoreMatches}
+                >
+                  {isLoadingMore ? '불러오는 중' : '더 보기'}
+                  <ChevronDown />
+                </Button>
+              ) : null}
+            </>
           )}
         </CardContent>
       </Card>
@@ -209,9 +354,10 @@ function MatchPanel({ match }: { match: PlayerMatch }) {
         <div className="flex min-w-0 flex-col justify-between gap-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2">
-              <Badge variant={match.rank > 0 && match.rank <= 3 ? 'success' : 'secondary'}>
-                #{match.rank || '-'}
+              <Badge variant={getResultBadgeVariant(match)}>
+                {getResultLabel(match)}
               </Badge>
+              <Badge variant="outline">{match.mode || '-'}</Badge>
               <p className="font-semibold">{match.character || '-'}</p>
             </div>
             <span className="text-xs text-muted-foreground">{match.playedAt || '-'}</span>
@@ -220,7 +366,11 @@ function MatchPanel({ match }: { match: PlayerMatch }) {
             <MiniStat label="K/D/A" value={`${match.kills}/${match.deaths}/${match.assists}`} />
             <MiniStat label="피해량" value={match.damage.toLocaleString()} />
             <MiniStat label="TK" value={formatNumber(match.teamKills)} />
-            <MiniStat label="MMR" value={formatSigned(match.mmrGain)} />
+            {isRankedResult(match) ? (
+              <RankPointStat match={match} />
+            ) : (
+              <MiniStat label="평점(KDA)" value={formatNumber(getKdaScore(match))} />
+            )}
           </div>
         </div>
         <div className="flex items-center justify-end">
@@ -289,7 +439,11 @@ function MatchPanel({ match }: { match: PlayerMatch }) {
                   </div>
                 </div>
               </div>
-              <ParticipantTable participants={detailQuery.data.participants} />
+              <ParticipantTable
+                matchingMode={match.matchingMode}
+                mode={match.mode}
+                participants={detailQuery.data.participants}
+              />
             </>
           ) : null}
         </div>
@@ -298,49 +452,94 @@ function MatchPanel({ match }: { match: PlayerMatch }) {
   )
 }
 
-function ParticipantTable({ participants }: { participants: MatchParticipant[] }) {
+function ParticipantTable({
+  matchingMode,
+  mode,
+  participants,
+}: {
+  matchingMode?: number
+  mode?: string
+  participants: MatchParticipant[]
+}) {
+  const teams = groupParticipantsByTeam(participants, mode, matchingMode)
+
   return (
-    <div className="rounded-lg border border-border/80 bg-background/35 p-2">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>플레이어</TableHead>
-            <TableHead>실험체</TableHead>
-            <TableHead className="text-right">순위</TableHead>
-            <TableHead className="text-right">K/D/A</TableHead>
-            <TableHead className="text-right">피해량</TableHead>
-            <TableHead className="text-right">받은 피해</TableHead>
-            <TableHead className="text-right">동물</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {participants.map((participant) => (
-            <TableRow key={`${participant.nickname}-${participant.characterName}`}>
-              <TableCell className="whitespace-nowrap font-medium">
-                {participant.nickname || '-'}
-              </TableCell>
-              <TableCell className="whitespace-nowrap">
-                {participant.characterName || '-'}
-              </TableCell>
-              <TableCell className="whitespace-nowrap text-right">
-                #{participant.gameRank || '-'}
-              </TableCell>
-              <TableCell className="whitespace-nowrap text-right">
-                {participant.kills}/{participant.deaths}/{participant.assists}
-              </TableCell>
-              <TableCell className="whitespace-nowrap text-right">
-                {participant.damageToPlayer.toLocaleString()}
-              </TableCell>
-              <TableCell className="whitespace-nowrap text-right">
-                {formatInteger(participant.damageFromPlayer)}
-              </TableCell>
-              <TableCell className="whitespace-nowrap text-right">
-                {formatInteger(participant.monsterKills)}
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+    <div className="space-y-3">
+      {teams.map((team) => (
+        <div
+          className="rounded-lg border border-border/80 bg-background/35"
+          key={team.teamNumber ?? 'unknown-team'}
+        >
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/80 px-4 py-3">
+            <div>
+              <h4 className="text-sm font-semibold">
+                {team.teamNumber === undefined ? '팀 정보 없음' : `팀 ${team.teamNumber}`}
+              </h4>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {team.participants.length}명 · {team.summary.kills}/{team.summary.deaths}/
+                {team.summary.assists}
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-4 text-right text-sm">
+              <div>
+                <p className="whitespace-nowrap text-xs text-muted-foreground">결과</p>
+                <Badge className="mt-0.5" variant={getResultBadgeVariant(team.summary)}>
+                  {getResultLabel(team.summary)}
+                </Badge>
+              </div>
+              <MiniStat label="피해량" value={formatInteger(team.summary.damageToPlayer)} />
+              <MiniStat label="받은 피해" value={formatInteger(team.summary.damageFromPlayer)} />
+            </div>
+          </div>
+          <div className="p-2">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>플레이어</TableHead>
+                  <TableHead>실험체</TableHead>
+                  <TableHead className="text-right">K/D/A</TableHead>
+                  <TableHead className="text-right">피해량</TableHead>
+                  <TableHead className="text-right">받은 피해</TableHead>
+                  <TableHead className="text-right">동물</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {team.participants.map((participant) => (
+                  <TableRow key={`${participant.nickname}-${participant.characterName}`}>
+                    <TableCell className="whitespace-nowrap font-medium">
+                      {participant.nickname ? (
+                        <Link
+                          className="text-primary underline-offset-4 hover:underline"
+                          to={`/players/${encodeURIComponent(participant.nickname)}`}
+                        >
+                          {participant.nickname}
+                        </Link>
+                      ) : (
+                        '-'
+                      )}
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap">
+                      {participant.characterName || '-'}
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap text-right">
+                      {participant.kills}/{participant.deaths}/{participant.assists}
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap text-right">
+                      {participant.damageToPlayer.toLocaleString()}
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap text-right">
+                      {formatInteger(participant.damageFromPlayer)}
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap text-right">
+                      {formatInteger(participant.monsterKills)}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </div>
+      ))}
     </div>
   )
 }
@@ -359,6 +558,32 @@ function MiniStat({ label, value }: { label: string; value: string }) {
     <div>
       <p className="whitespace-nowrap text-xs text-muted-foreground">{label}</p>
       <p className="mt-0.5 whitespace-nowrap font-semibold">{value}</p>
+    </div>
+  )
+}
+
+function RankPointStat({ match }: { match: PlayerMatch }) {
+  const delta = match.mmrGain
+
+  return (
+    <div>
+      <p className="whitespace-nowrap text-xs text-muted-foreground">RP</p>
+      <p className="mt-0.5 whitespace-nowrap font-semibold">
+        {match.rankPoint !== undefined ? (
+          <span>{match.rankPoint.toLocaleString()} </span>
+        ) : null}
+        {delta !== undefined ? (
+          <span
+            className={cn(
+              delta > 0 && 'text-sky-400',
+              delta < 0 && 'text-red-400',
+            )}
+          >
+            {formatSigned(delta)}
+          </span>
+        ) : null}
+        {match.rankPoint === undefined && delta === undefined ? '-' : null}
+      </p>
     </div>
   )
 }
@@ -382,12 +607,236 @@ function getCharacterStats(matches: PlayerMatch[]) {
     .slice(0, 5)
 }
 
+function isRankedResult(match: PlayerMatch) {
+  return match.matchingMode === 3 || match.mode === '랭크'
+}
+
+function getKdaScore(match: PlayerMatch) {
+  return (match.kills + match.assists) / Math.max(match.deaths, 1)
+}
+
+function filterMatches(matches: PlayerMatch[], filter: MatchFilter) {
+  if (filter === 'all') {
+    return matches
+  }
+
+  return matches.filter((match) => getMatchFilter(match) === filter)
+}
+
+function getMatchFilter(match: PlayerMatch): Exclude<MatchFilter, 'all'> | undefined {
+  const mode = match.mode.toLowerCase()
+  const isUnion = match.mode.includes('유니온') || mode.includes('union')
+  const isCobalt = isCobaltResult(match)
+
+  if (isCobalt && isUnion) {
+    return 'cobaltUnion'
+  }
+
+  if (isCobalt) {
+    return 'cobalt'
+  }
+
+  if (isUnion) {
+    return 'union'
+  }
+
+  if (match.mode.includes('론 울프') || mode.includes('lone')) {
+    return 'loneWolf'
+  }
+
+  if (isRankedResult(match)) {
+    return 'ranked'
+  }
+
+  if (
+    match.matchingMode === 1 ||
+    match.matchingMode === 2 ||
+    match.mode.includes('일반') ||
+    mode.includes('normal')
+  ) {
+    return 'normal'
+  }
+
+  return undefined
+}
+
 function average(values: number[]) {
   if (values.length === 0) {
     return undefined
   }
 
   return values.reduce((sum, value) => sum + value, 0) / values.length
+}
+
+function groupParticipantsByTeam(
+  participants: MatchParticipant[],
+  mode?: string,
+  matchingMode?: number,
+) {
+  const grouped = new Map<number | undefined, MatchParticipant[]>()
+
+  for (const participant of participants) {
+    grouped.set(participant.teamNumber, [
+      ...(grouped.get(participant.teamNumber) ?? []),
+      participant,
+    ])
+  }
+
+  return [...grouped.entries()]
+    .map(([teamNumber, rows]) => ({
+      teamNumber,
+      participants: rows.sort((a, b) => (a.nickname || '').localeCompare(b.nickname || '')),
+      summary: getTeamSummary(rows, mode, matchingMode),
+    }))
+    .sort((a, b) => {
+      const rankDiff = (a.summary.rank || Number.MAX_SAFE_INTEGER) -
+        (b.summary.rank || Number.MAX_SAFE_INTEGER)
+
+      if (rankDiff !== 0) {
+        return rankDiff
+      }
+
+      return (a.teamNumber ?? Number.MAX_SAFE_INTEGER) -
+        (b.teamNumber ?? Number.MAX_SAFE_INTEGER)
+    })
+}
+
+function getTeamSummary(
+  participants: MatchParticipant[],
+  mode?: string,
+  matchingMode?: number,
+) {
+  const ranks = participants
+    .map((participant) => participant.gameRank)
+    .filter((rank): rank is number => rank !== undefined)
+  const representative = participants[0]
+
+  return {
+    rank: ranks.length > 0 ? Math.min(...ranks) : undefined,
+    matchingMode,
+    mode,
+    victory: representative?.victory,
+    outcome: representative?.outcome,
+    escape: participants.some((participant) => participant.escape),
+    kills: participants.reduce((sum, participant) => sum + participant.kills, 0),
+    deaths: participants.reduce((sum, participant) => sum + participant.deaths, 0),
+    assists: participants.reduce((sum, participant) => sum + participant.assists, 0),
+    damageToPlayer: participants.reduce(
+      (sum, participant) => sum + participant.damageToPlayer,
+      0,
+    ),
+    damageFromPlayer: participants.reduce(
+      (sum, participant) => sum + (participant.damageFromPlayer ?? 0),
+      0,
+    ),
+  }
+}
+
+function getResultBadgeVariant(result: {
+  escape?: boolean
+  matchingMode?: number
+  mode?: string
+  outcome?: string
+  rank?: number
+  victory?: number
+}) {
+  if (isEscapeResult(result)) {
+    return 'escape' as const
+  }
+
+  if (isVictoryResult(result)) {
+    return 'win' as const
+  }
+
+  if (isDefeatResult(result)) {
+    return 'loss' as const
+  }
+
+  if (result.rank === 2 || result.rank === 3) {
+    return 'podium' as const
+  }
+
+  return 'loss' as const
+}
+
+function getResultLabel(result: {
+  escape?: boolean
+  matchingMode?: number
+  mode?: string
+  outcome?: string
+  rank?: number
+  victory?: number
+}) {
+  if (isEscapeResult(result)) {
+    return '탈출'
+  }
+
+  if (isCobaltResult(result) && isVictoryResult(result)) {
+    return '승리'
+  }
+
+  if (isDefeatResult(result)) {
+    return '패배'
+  }
+
+  return `#${result.rank || '-'}`
+}
+
+function isVictoryResult(result: {
+  matchingMode?: number
+  mode?: string
+  outcome?: string
+  rank?: number
+  victory?: number
+}) {
+  const outcome = result.outcome?.toLowerCase()
+
+  return (
+    result.victory === 1 ||
+    outcome === 'win' ||
+    outcome === 'victory' ||
+    result.rank === 1
+  )
+}
+
+function isDefeatResult(result: {
+  matchingMode?: number
+  mode?: string
+  outcome?: string
+  rank?: number
+  victory?: number
+}) {
+  const outcome = result.outcome?.toLowerCase()
+
+  return (
+    (result.victory !== undefined && result.victory !== 1) ||
+    (isCobaltResult(result) && result.rank !== undefined && result.rank > 1) ||
+    outcome === 'lose' ||
+    outcome === 'loss' ||
+    outcome === 'defeat' ||
+    result.outcome === '패배'
+  )
+}
+
+function isCobaltResult(result: { matchingMode?: number; mode?: string }) {
+  const mode = result.mode?.toLowerCase()
+
+  return (
+    result.matchingMode === 6 ||
+    mode?.includes('cobalt') === true ||
+    result.mode?.includes('코발트') === true
+  )
+}
+
+function isEscapeResult(result: { escape?: boolean; outcome?: string }) {
+  const outcome = result.outcome?.toLowerCase()
+
+  return (
+    result.escape === true ||
+    outcome === 'escape' ||
+    outcome === 'escaped' ||
+    result.outcome === '탈출'
+  )
 }
 
 function findMyParticipant(detail: MatchDetail | undefined, match: PlayerMatch) {
@@ -415,11 +864,11 @@ function getEquipmentList(participant: MatchParticipant) {
 }
 
 function formatNumber(value?: number) {
-  return value === undefined || value === 0 ? '-' : value.toFixed(1)
+  return value === undefined ? '-' : value.toFixed(1)
 }
 
 function formatInteger(value?: number) {
-  return value === undefined || value === 0 ? '-' : Math.round(value).toLocaleString()
+  return value === undefined ? '-' : Math.round(value).toLocaleString()
 }
 
 function formatDuration(value?: number) {
@@ -434,7 +883,7 @@ function formatDuration(value?: number) {
 }
 
 function formatPercent(value?: number) {
-  return value === undefined || value === 0 ? '-' : `${value.toFixed(1)}%`
+  return value === undefined ? '-' : `${value.toFixed(1)}%`
 }
 
 function formatSigned(value?: number) {
