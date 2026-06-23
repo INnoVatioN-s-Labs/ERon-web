@@ -31,7 +31,18 @@ export type PlayerMatch = {
   matchingMode?: number
   matchingTeamMode?: number
   seasonId?: number
+  characterNum?: number
   character: string
+  bestWeapon?: number
+  bestWeaponName?: string
+  bestWeaponLevel?: number
+  tacticalSkillGroupCode?: number
+  tacticalSkill?: string
+  traits?: Array<{
+    traitCode?: number
+    traitName: string
+    slot?: 'main' | 'sub'
+  }>
   rank: number
   kills: number
   deaths: number

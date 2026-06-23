@@ -1,5 +1,5 @@
 import { ChevronDown } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useMatchDetail } from '@/entities/match/api'
 import type { MatchDetail, MatchParticipant } from '@/entities/match/types'
@@ -32,7 +32,6 @@ type PlayerSearchResultProps = {
 }
 
 type MatchFilter = 'all' | 'ranked' | 'normal' | 'cobalt' | 'loneWolf' | 'union' | 'cobaltUnion'
-
 const MATCH_FILTERS: { key: MatchFilter; label: string }[] = [
   { key: 'all', label: '전체' },
   { key: 'ranked', label: '랭크' },
@@ -58,13 +57,16 @@ export function PlayerSearchResultView({
   const [nextCursor, setNextCursor] = useState('')
   const [isLoadingMore, setIsLoadingMore] = useState(false)
   const [loadMoreError, setLoadMoreError] = useState('')
+  const resultKey = getResultKey(result)
+  const [loadedResultKey, setLoadedResultKey] = useState(resultKey)
 
-  useEffect(() => {
+  if (resultKey !== loadedResultKey) {
+    setLoadedResultKey(resultKey)
     setLoadedMatches(result?.matches ?? [])
     setNextCursor(result?.next ?? '')
     setVisibleMatchCount(INITIAL_VISIBLE_MATCH_COUNT)
     setLoadMoreError('')
-  }, [result])
+  }
 
   if (!searchedNickname) {
     return (
@@ -270,7 +272,11 @@ export function PlayerSearchResultView({
           {visibleMatches.length > 0 ? (
             <>
               {visibleMatches.map((match) => (
-                <MatchPanel key={match.matchId || `${match.character}-${match.playedAt}`} match={match} />
+                <MatchPanel
+                  key={match.matchId || `${match.character}-${match.playedAt}`}
+                  match={match}
+                  nickname={result.profile.nickname}
+                />
               ))}
               {loadMoreError ? (
                 <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
@@ -337,10 +343,10 @@ function StateCard({
   )
 }
 
-function MatchPanel({ match }: { match: PlayerMatch }) {
+function MatchPanel({ match, nickname }: { match: PlayerMatch; nickname: string }) {
   const [isOpen, setIsOpen] = useState(false)
   const detailQuery = useMatchDetail(match.matchId, isOpen)
-  const myParticipant = findMyParticipant(detailQuery.data, match)
+  const myParticipant = findMyParticipant(detailQuery.data, match, nickname)
   const equipment = myParticipant ? getEquipmentList(myParticipant) : []
 
   return (
@@ -372,6 +378,7 @@ function MatchPanel({ match }: { match: PlayerMatch }) {
               <MiniStat label="평점(KDA)" value={formatNumber(getKdaScore(match))} />
             )}
           </div>
+          <MatchBuildSummary participant={match} />
         </div>
         <div className="flex items-center justify-end">
           <Button
@@ -404,7 +411,7 @@ function MatchPanel({ match }: { match: PlayerMatch }) {
             <>
               <div className="grid gap-3 lg:grid-cols-2">
                 <div className="rounded-lg border border-border/80 bg-background/35 p-4">
-                  <h4 className="text-sm font-semibold">내 무기 · 장비 · 전술스킬</h4>
+                  <h4 className="text-sm font-semibold">내 무기 · 장비 · 전술스킬 · 특성</h4>
                   <div className="mt-3 grid grid-cols-2 gap-2 text-sm sm:grid-cols-3">
                     <MiniStat
                       label="무기"
@@ -426,6 +433,17 @@ function MatchPanel({ match }: { match: PlayerMatch }) {
                       ))
                     ) : (
                       <span className="text-sm text-muted-foreground">장비 정보 없음</span>
+                    )}
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {myParticipant?.traits.length ? (
+                      myParticipant.traits.map((trait) => (
+                        <Badge key={trait.traitCode ?? trait.traitName} variant="secondary">
+                          {trait.traitName}
+                        </Badge>
+                      ))
+                    ) : (
+                      <span className="text-sm text-muted-foreground">특성 정보 없음</span>
                     )}
                   </div>
                 </div>
@@ -586,6 +604,67 @@ function RankPointStat({ match }: { match: PlayerMatch }) {
       </p>
     </div>
   )
+}
+
+function MatchBuildSummary({
+  participant,
+}: {
+  participant?: {
+    bestWeapon?: number
+    bestWeaponName?: string
+    bestWeaponLevel?: number
+    tacticalSkill?: string
+    traits?: Array<{ traitName: string; slot?: 'main' | 'sub' }>
+  }
+}) {
+  const traits = participant?.traits ?? []
+  const mainTrait = traits.find((trait) => trait.slot === 'main') ?? traits[0]
+  const subTraits = traits.filter((trait) => trait.slot === 'sub')
+  const secondaryTraits = subTraits.length > 0 ? subTraits : traits.slice(1)
+
+  return (
+    <div className="grid gap-4 border-t border-border/70 pt-3 text-sm sm:grid-cols-[minmax(0,1fr)_minmax(12rem,0.8fr)]">
+      <div className="space-y-2">
+        <BuildInfo
+          label="무기"
+          value={
+            participant?.bestWeaponName ||
+            (participant?.bestWeapon
+              ? `${participant.bestWeapon} Lv.${participant.bestWeaponLevel ?? '-'}`
+              : '-')
+          }
+        />
+        <BuildInfo label="전술 스킬" value={participant?.tacticalSkill || '-'} />
+      </div>
+      <div className="grid grid-cols-2 gap-3 border-border/70 sm:border-l sm:pl-4">
+        <BuildInfo label="주 특성" value={getTraitNames(mainTrait ? [mainTrait] : [])} />
+        <BuildInfo label="보조 특성" value={getTraitNames(secondaryTraits)} />
+      </div>
+    </div>
+  )
+}
+
+function BuildInfo({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className="mt-0.5 break-words font-semibold">{value}</p>
+    </div>
+  )
+}
+
+function getTraitNames(traits: Array<{ traitName: string }>) {
+  const names = [...new Set(traits.map((trait) => trait.traitName).filter(Boolean))]
+
+  return names.length > 0 ? names.join(' · ') : '-'
+}
+
+function getResultKey(result?: PlayerSearchResult) {
+  if (!result) {
+    return ''
+  }
+
+  return `${result.profile.userId}:${result.matches[0]?.matchId ?? ''}:${result.next ?? ''}`
 }
 
 function getCharacterStats(matches: PlayerMatch[]) {
@@ -808,9 +887,9 @@ function isDefeatResult(result: {
 }) {
   const outcome = result.outcome?.toLowerCase()
 
-  return (
+  return isCobaltResult(result) && (
     (result.victory !== undefined && result.victory !== 1) ||
-    (isCobaltResult(result) && result.rank !== undefined && result.rank > 1) ||
+    (result.rank !== undefined && result.rank > 1) ||
     outcome === 'lose' ||
     outcome === 'loss' ||
     outcome === 'defeat' ||
@@ -839,18 +918,33 @@ function isEscapeResult(result: { escape?: boolean; outcome?: string }) {
   )
 }
 
-function findMyParticipant(detail: MatchDetail | undefined, match: PlayerMatch) {
+function findMyParticipant(
+  detail: MatchDetail | undefined,
+  match: PlayerMatch,
+  nickname: string,
+) {
   if (!detail) {
     return undefined
   }
 
-  return detail.participants.find(
+  return (
+    detail.participants.find((participant) => participant.nickname === nickname) ??
+    detail.participants.find(
+      (participant) =>
+        participant.characterNum === match.characterNum &&
+        participant.gameRank === match.rank &&
+        participant.kills === match.kills &&
+        participant.assists === match.assists &&
+        participant.deaths === match.deaths,
+    ) ??
+    detail.participants.find(
     (participant) =>
       participant.characterName === match.character &&
       participant.gameRank === match.rank &&
       participant.kills === match.kills &&
       participant.assists === match.assists &&
       participant.deaths === match.deaths,
+    )
   )
 }
 

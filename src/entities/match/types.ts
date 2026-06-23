@@ -4,6 +4,13 @@ export type EquipmentSummary = {
   itemGrade?: number
 }
 
+export type TraitSummary = {
+  traitCode?: number
+  traitName: string
+  category?: string
+  slot?: 'main' | 'sub'
+}
+
 export type MatchParticipant = {
   nickname: string
   teamNumber?: number
@@ -22,13 +29,16 @@ export type MatchParticipant = {
   healAmount?: number
   protectAbsorb?: number
   bestWeapon?: number
+  bestWeaponName?: string
   bestWeaponLevel?: number
   rankPoint?: number
   victory?: number
   outcome?: string
   escape?: boolean
   playTime?: number
+  tacticalSkillGroupCode?: number
   tacticalSkill?: string
+  traits: TraitSummary[]
   equipment: Record<string, EquipmentSummary>
 }
 
