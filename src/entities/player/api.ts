@@ -45,6 +45,10 @@ function asOptionalNumber(value: unknown) {
   return undefined
 }
 
+function normalizeTraitSlot(value: unknown): 'main' | 'sub' | undefined {
+  return value === 'main' || value === 'sub' ? value : undefined
+}
+
 function normalizePercent(value: number) {
   if (value > 0 && value <= 1) {
     return Math.round(value * 1000) / 10
@@ -294,9 +298,25 @@ function normalizeMatch(value: unknown): PlayerMatch {
     matchingMode,
     matchingTeamMode,
     seasonId,
+    characterNum: asOptionalNumber(value.characterNum ?? value.character_num),
     character: asString(
       value.character ?? value.characterName ?? value.character_name,
     ),
+    bestWeapon: asOptionalNumber(value.bestWeapon ?? value.best_weapon),
+    bestWeaponName: asString(value.bestWeaponName ?? value.best_weapon_name) || undefined,
+    bestWeaponLevel: asOptionalNumber(value.bestWeaponLevel ?? value.best_weapon_level),
+    tacticalSkillGroupCode: asOptionalNumber(
+      value.tacticalSkillGroupCode ?? value.tactical_skill_group_code,
+    ),
+    tacticalSkill: asString(value.tacticalSkill ?? value.tactical_skill) || undefined,
+    traits: asArray(value.traits)
+      .filter(isRecord)
+      .map((trait) => ({
+        traitCode: asOptionalNumber(trait.traitCode ?? trait.trait_code),
+        traitName: asString(trait.traitName ?? trait.trait_name),
+        slot: normalizeTraitSlot(trait.slot),
+      }))
+      .filter((trait) => trait.traitName.length > 0),
     rank: asNumber(value.rank ?? value.gameRank ?? value.game_rank),
     kills: asNumber(value.kills ?? value.playerKill),
     deaths: asNumber(value.deaths ?? value.playerDeaths),

@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { apiEndpoints } from '@/shared/api/endpoints'
 import { requestJson } from '@/shared/api/http-client'
 import { asArray, asNumber, asString, isRecord, unwrapApiData } from '@/shared/lib/object'
-import type { EquipmentSummary, MatchDetail, MatchParticipant } from './types'
+import type { EquipmentSummary, MatchDetail, MatchParticipant, TraitSummary } from './types'
 
 function asBoolean(value: unknown) {
   return typeof value === 'boolean' ? value : undefined
@@ -41,6 +41,72 @@ function normalizeEquipment(value: unknown): Record<string, EquipmentSummary> {
   )
 }
 
+function normalizeTrait(
+  value: unknown,
+  slot?: TraitSummary['slot'],
+): TraitSummary | undefined {
+  if (!isRecord(value)) {
+    return undefined
+  }
+
+  const traitName = asString(
+    value.traitName ?? value.name ?? value.traitTypeName ?? value.trait_type_name,
+  )
+
+  if (!traitName) {
+    return undefined
+  }
+
+  return {
+    traitCode: asNumber(value.traitCode ?? value.code ?? value.traitType, 0) || undefined,
+    traitName,
+    category: asString(
+      value.category ??
+        value.traitCategory ??
+        value.trait_category ??
+        value.traitGroup ??
+        value.trait_group ??
+        value.traitTypeName ??
+        value.trait_type_name,
+    ),
+    slot,
+  }
+}
+
+function normalizeTraits(value: Record<string, unknown>): TraitSummary[] {
+  const mainTrait = normalizeTrait(
+    value.mainTrait ??
+      value.main_trait ??
+      value.primaryTrait ??
+      value.primary_trait ??
+      value.traitFirst ??
+      value.trait_first,
+    'main',
+  )
+  const subTraits = asArray(
+    value.subTraits ??
+      value.sub_traits ??
+      value.secondaryTraits ??
+      value.secondary_traits ??
+      value.traitSecond ??
+      value.trait_second ??
+      value.traits ??
+      value.traitList ??
+      value.trait_list,
+  )
+    .map((trait) => normalizeTrait(trait, 'sub'))
+    .filter((trait): trait is TraitSummary => trait !== undefined)
+
+  if (mainTrait) {
+    return [mainTrait, ...subTraits]
+  }
+
+  return subTraits.map((trait, index) => ({
+    ...trait,
+    slot: index === 0 ? 'main' : 'sub',
+  }))
+}
+
 function normalizeParticipant(value: unknown): MatchParticipant {
   if (!isRecord(value)) {
     return {
@@ -50,6 +116,7 @@ function normalizeParticipant(value: unknown): MatchParticipant {
       deaths: 0,
       assists: 0,
       damageToPlayer: 0,
+      traits: [],
       equipment: {},
     }
   }
@@ -73,13 +140,17 @@ function normalizeParticipant(value: unknown): MatchParticipant {
     healAmount: asNumber(value.healAmount, 0) || undefined,
     protectAbsorb: asNumber(value.protectAbsorb, 0) || undefined,
     bestWeapon: asNumber(value.bestWeapon, 0) || undefined,
+    bestWeaponName: asString(value.bestWeaponName ?? value.best_weapon_name),
     bestWeaponLevel: asNumber(value.bestWeaponLevel, 0) || undefined,
     rankPoint: asNumber(value.rankPoint, 0) || undefined,
     victory: asOptionalNumber(value.victory),
     outcome: asString(value.outcome ?? value.result ?? value.gameResult),
     escape: asBoolean(value.escape ?? value.isEscape ?? value.is_escape),
     playTime: asNumber(value.playTime, 0) || undefined,
+    tacticalSkillGroupCode:
+      asNumber(value.tacticalSkillGroupCode ?? value.tactical_skill_group_code, 0) || undefined,
     tacticalSkill: asString(value.tacticalSkill ?? value.tacticalSkillName),
+    traits: normalizeTraits(value),
     equipment: normalizeEquipment(value.equipment),
   }
 }
