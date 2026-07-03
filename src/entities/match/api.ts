@@ -126,6 +126,7 @@ function normalizeParticipant(value: unknown): MatchParticipant {
     teamNumber: asNumber(value.teamNumber ?? value.team_number, 0) || undefined,
     gameRank: asNumber(value.gameRank ?? value.game_rank, 0) || undefined,
     characterNum: asNumber(value.characterNum ?? value.character_num, 0) || undefined,
+    skinCode: asNumber(value.skinCode ?? value.skin_code, 0) || undefined,
     characterName: asString(value.characterName ?? value.character_name),
     characterLevel:
       asNumber(value.characterLevel ?? value.character_level, 0) || undefined,

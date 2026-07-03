@@ -299,6 +299,7 @@ function normalizeMatch(value: unknown): PlayerMatch {
     matchingTeamMode,
     seasonId,
     characterNum: asOptionalNumber(value.characterNum ?? value.character_num),
+    skinCode: asOptionalNumber(value.skinCode ?? value.skin_code),
     character: asString(
       value.character ?? value.characterName ?? value.character_name,
     ),

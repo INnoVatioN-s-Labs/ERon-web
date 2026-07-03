@@ -1,10 +1,13 @@
 import { ChevronDown } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useMatchDetail } from '@/entities/match/api'
 import type { MatchDetail, MatchParticipant } from '@/entities/match/types'
+import { loadSkinMetadata } from '@/entities/character/api'
+import type { SkinMetadata } from '@/entities/character/api'
 import { loadPlayerMatches } from '@/entities/player/api'
 import type { PlayerMatch, PlayerSearchResult } from '@/entities/player/types'
+import { loadCharacterMiniPortrait } from '@/shared/lib/character-mini-portrait'
 import { cn } from '@/shared/lib/utils'
 import { Badge } from '@/shared/ui/badge'
 import { Button } from '@/shared/ui/button'
@@ -352,10 +355,13 @@ function MatchPanel({ match, nickname }: { match: PlayerMatch; nickname: string 
   return (
     <div className="rounded-lg border border-border/80 bg-muted/35 p-3">
       <div className="grid gap-4 sm:grid-cols-[112px_1fr_auto]">
-        <div className="flex aspect-square items-center justify-center rounded-md border border-primary/20 bg-[radial-gradient(circle_at_50%_30%,hsl(var(--primary)/0.24),hsl(var(--background))_70%)]">
-          <span className="px-2 text-center text-sm font-semibold">
-            {match.character || '-'}
-          </span>
+        <div className="flex aspect-square overflow-hidden rounded-md border border-primary/20 bg-[radial-gradient(circle_at_50%_30%,hsl(var(--primary)/0.24),hsl(var(--background))_70%)]">
+          <MatchCharacterPortrait
+            characterName={match.character}
+            characterNumber={match.characterNum}
+            key={`${match.characterNum ?? 'unknown'}-${match.skinCode ?? 'default'}`}
+            skinCode={match.skinCode}
+          />
         </div>
         <div className="flex min-w-0 flex-col justify-between gap-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -366,7 +372,9 @@ function MatchPanel({ match, nickname }: { match: PlayerMatch; nickname: string 
               <Badge variant="outline">{match.mode || '-'}</Badge>
               <p className="font-semibold">{match.character || '-'}</p>
             </div>
-            <span className="text-xs text-muted-foreground">{match.playedAt || '-'}</span>
+            <span className="text-xs text-muted-foreground">
+              {formatMatchDateTime(match.playedAt)}
+            </span>
           </div>
           <div className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
             <MiniStat label="K/D/A" value={`${match.kills}/${match.deaths}/${match.assists}`} />
@@ -453,7 +461,10 @@ function MatchPanel({ match, nickname }: { match: PlayerMatch; nickname: string 
                     <MiniStat label="참가자" value={`${detailQuery.data.participantCount}명`} />
                     <MiniStat label="매치 크기" value={formatInteger(detailQuery.data.matchSize)} />
                     <MiniStat label="플레이 시간" value={formatDuration(detailQuery.data.playTime)} />
-                    <MiniStat label="시작 시간" value={detailQuery.data.startDtm || '-'} />
+                    <MiniStat
+                      label="시작 시간"
+                      value={formatMatchDateTime(detailQuery.data.startDtm)}
+                    />
                   </div>
                 </div>
               </div>
@@ -468,6 +479,75 @@ function MatchPanel({ match, nickname }: { match: PlayerMatch; nickname: string 
       ) : null}
     </div>
   )
+}
+
+function MatchCharacterPortrait({
+  characterName,
+  characterNumber,
+  skinCode,
+}: {
+  characterName: string
+  characterNumber?: number
+  skinCode?: number
+}) {
+  const [portrait, setPortrait] = useState<string>()
+
+  useEffect(() => {
+    let isCurrent = true
+
+    void loadSkinMetadata()
+      .then((skins) =>
+        loadCharacterMiniPortrait(
+          characterNumber,
+          characterName,
+          findMatchSkin(skins, skinCode) ?? (skinCode ? { skinCode } : undefined),
+        ),
+      )
+      .catch(() =>
+        loadCharacterMiniPortrait(
+          characterNumber,
+          characterName,
+          skinCode ? { skinCode } : undefined,
+        ),
+      )
+      .then((nextPortrait) => {
+        if (isCurrent) {
+          setPortrait(nextPortrait)
+        }
+      })
+
+    return () => {
+      isCurrent = false
+    }
+  }, [characterName, characterNumber, skinCode])
+
+  return portrait ? (
+    <img
+      alt={`${characterName || '실험체'} MINI 초상화`}
+      className="h-full w-full object-cover"
+      src={portrait}
+      title={`${characterName || '실험체'}${skinCode ? ` · skinCode ${skinCode}` : ''}`}
+    />
+  ) : (
+    <span className="m-auto px-2 text-center text-sm font-semibold">{characterName || '-'}</span>
+  )
+}
+
+function findMatchSkin(
+  skins: SkinMetadata[],
+  skinCode: number | undefined,
+) {
+  if (!skinCode) {
+    return undefined
+  }
+
+  const exactSkin = skins.find((skin) => skin.skinCode === skinCode)
+
+  if (exactSkin) {
+    return exactSkin
+  }
+
+  return undefined
 }
 
 function ParticipantTable({
@@ -974,6 +1054,16 @@ function formatDuration(value?: number) {
   const seconds = value % 60
 
   return `${minutes}:${String(seconds).padStart(2, '0')}`
+}
+
+function formatMatchDateTime(value?: string) {
+  if (!value) {
+    return '-'
+  }
+
+  const match = value.match(/^(\d{4}-\d{2}-\d{2})[T\s](\d{2}:\d{2})/)
+
+  return match ? `${match[1]} ${match[2]}` : value
 }
 
 function formatPercent(value?: number) {

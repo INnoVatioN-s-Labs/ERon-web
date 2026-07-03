@@ -32,6 +32,7 @@ export type PlayerMatch = {
   matchingTeamMode?: number
   seasonId?: number
   characterNum?: number
+  skinCode?: number
   character: string
   bestWeapon?: number
   bestWeaponName?: string
