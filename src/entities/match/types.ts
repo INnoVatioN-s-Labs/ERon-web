@@ -16,6 +16,7 @@ export type MatchParticipant = {
   teamNumber?: number
   gameRank?: number
   characterNum?: number
+  skinCode?: number
   characterName: string
   characterLevel?: number
   kills: number

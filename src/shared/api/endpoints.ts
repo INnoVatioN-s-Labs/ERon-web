@@ -8,6 +8,7 @@ const matchingTeamMode = Number(
 const matchLimit = Number(import.meta.env.VITE_ER_MATCH_LIMIT ?? 50)
 
 export const apiEndpoints = {
+  skinMetadata: '/api/er/meta/skins',
   rankingTop10: [
     `/api/er/rankings/top?seasonId=${seasonId}&matchingTeamMode=${matchingTeamMode}`,
   ],
