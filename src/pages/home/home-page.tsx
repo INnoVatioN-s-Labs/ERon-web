@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom'
+import { useCurrentCharacterMeta } from '@/entities/meta/api'
 import { useTopRankings } from '@/entities/ranking/api'
-import { metaCharacters, patchNote } from '@/shared/config/mock-home-data'
+import { patchNote } from '@/shared/config/mock-home-data'
 import { HomeHero } from '@/widgets/home-hero/home-hero'
 import { MetaOverview } from '@/widgets/meta-overview/meta-overview'
 import { RankingPreview } from '@/widgets/ranking-preview/ranking-preview'
@@ -15,6 +16,7 @@ import { Badge } from '@/shared/ui/badge'
 
 export function HomePage() {
   const navigate = useNavigate()
+  const metaQuery = useCurrentCharacterMeta()
   const rankingQuery = useTopRankings()
 
   function handleSearch(nickname: string) {
@@ -31,7 +33,12 @@ export function HomePage() {
     <main>
       <HomeHero onSearch={handleSearch} />
       <section className="mx-auto grid max-w-7xl gap-5 px-5 py-8 sm:px-8 lg:grid-cols-[1.2fr_0.8fr]">
-        <MetaOverview characters={metaCharacters} />
+        <MetaOverview
+          characters={metaQuery.data ?? []}
+          error={metaQuery.error}
+          isFetching={metaQuery.isFetching}
+          isLoading={metaQuery.isLoading}
+        />
         <RankingPreview
           error={rankingQuery.error}
           isFetching={rankingQuery.isFetching}

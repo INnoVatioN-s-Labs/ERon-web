@@ -6,6 +6,7 @@ export type EquipmentSummary = {
 
 export type TraitSummary = {
   traitCode?: number
+  traitIconCode?: number
   traitName: string
   category?: string
   slot?: 'main' | 'sub'
@@ -39,6 +40,9 @@ export type MatchParticipant = {
   playTime?: number
   tacticalSkillGroupCode?: number
   tacticalSkill?: string
+  subTraitStyle?: string
+  routeNumber?: number
+  isRoutePrivate?: boolean
   traits: TraitSummary[]
   equipment: Record<string, EquipmentSummary>
 }

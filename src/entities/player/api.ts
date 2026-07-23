@@ -45,6 +45,67 @@ function asOptionalNumber(value: unknown) {
   return undefined
 }
 
+function asOptionalString(value: unknown) {
+  if (typeof value === 'string') {
+    return value.trim() || undefined
+  }
+
+  return undefined
+}
+
+function firstString(...values: unknown[]) {
+  for (const value of values) {
+    const stringValue = asOptionalString(value)
+
+    if (stringValue) {
+      return stringValue
+    }
+  }
+
+  return undefined
+}
+
+function normalizeTier(...sources: unknown[]) {
+  for (const source of sources) {
+    if (!isRecord(source)) {
+      continue
+    }
+
+    const tier = firstString(
+      source.tierName,
+      source.tiername,
+      source.tier_name,
+      source.rankTierName,
+      source.ranktiername,
+      source.rank_tier_name,
+      source.tier,
+      source.rankTier,
+      source.ranktier,
+      source.rank_tier,
+    )
+    const grade = firstString(
+      source.tierGrade,
+      source.tiergrade,
+      source.tier_grade,
+      source.rankGrade,
+      source.rankgrade,
+      source.rank_grade,
+      source.division,
+      source.grade,
+    )
+
+    if (tier && grade && !tier.includes(grade)) {
+      return `${tier} ${grade}`
+    }
+
+    if (tier) {
+      return tier
+    }
+  }
+
+  return undefined
+}
+
 function normalizeTraitSlot(value: unknown): 'main' | 'sub' | undefined {
   return value === 'main' || value === 'sub' ? value : undefined
 }
@@ -239,7 +300,7 @@ function statsFromRankedMatches(matches: PlayerMatch[]): PlayerSeasonStats {
   }
 }
 
-function normalizeMatch(value: unknown): PlayerMatch {
+function normalizeMatch(value: unknown, detail?: unknown): PlayerMatch {
   if (!isRecord(value)) {
     return {
       matchId: '',
@@ -273,6 +334,31 @@ function normalizeMatch(value: unknown): PlayerMatch {
   )
   const seasonId = firstOptionalNumber(value.seasonId, value.season_id)
   const modeKey = asString(value.modeKey ?? value.mode_key)
+  const routeValue =
+    value.routeId ??
+    value.route_id ??
+    value.routeNumber ??
+    value.route_number ??
+    value.routeNo ??
+    value.route_no ??
+    value.routeNum ??
+    value.route_num ??
+    value.routeCode ??
+    value.route_code ??
+    value.recommendWeaponRouteId ??
+    value.recommend_weapon_route_id
+  const detailRoute = normalizeMatchDetailRoute(detail, value)
+  const routeNumber = asOptionalNumber(routeValue) ?? detailRoute.routeNumber
+  const explicitRoutePrivate = asBoolean(
+    value.isRoutePrivate ??
+      value.is_route_private ??
+      value.routePrivate ??
+      value.route_private ??
+      value.privateRoute ??
+      value.private_route ??
+      value.isPrivateRoute ??
+      value.is_private_route,
+  )
 
   return {
     matchId: asIdString(
@@ -310,11 +396,27 @@ function normalizeMatch(value: unknown): PlayerMatch {
       value.tacticalSkillGroupCode ?? value.tactical_skill_group_code,
     ),
     tacticalSkill: asString(value.tacticalSkill ?? value.tactical_skill) || undefined,
+    subTraitStyle:
+      asString(value.subTraitStyle ?? value.sub_trait_style) ||
+      detailRoute.subTraitStyle ||
+      undefined,
+    routeNumber,
+    isRoutePrivate: explicitRoutePrivate ?? (routeValue === null || detailRoute.isRoutePrivate),
     traits: asArray(value.traits)
       .filter(isRecord)
       .map((trait) => ({
         traitCode: asOptionalNumber(trait.traitCode ?? trait.trait_code),
+        traitIconCode: asOptionalNumber(
+          trait.traitIconCode ?? trait.trait_icon_code,
+        ),
         traitName: asString(trait.traitName ?? trait.trait_name),
+        category: asString(
+          trait.category ??
+            trait.traitCategory ??
+            trait.trait_category ??
+            trait.traitGroup ??
+            trait.trait_group,
+        ) || undefined,
         slot: normalizeTraitSlot(trait.slot),
       }))
       .filter((trait) => trait.traitName.length > 0),
@@ -343,6 +445,58 @@ function normalizeMatch(value: unknown): PlayerMatch {
     escape: asBoolean(value.escape ?? value.isEscape ?? value.is_escape),
     playedAt: asString(value.playedAt ?? value.startedAt ?? value.started_at ?? value.startDtm),
   }
+}
+
+function normalizeMatchDetailRoute(detail: unknown, match: Record<string, unknown>) {
+  if (!isRecord(detail)) {
+    return {}
+  }
+
+  const participants = asArray(detail.participants ?? detail.userGames ?? detail.user_games)
+    .filter(isRecord)
+  const nickname = asString(match.nickname ?? match.userNickname ?? match.user_nickname)
+  const characterNum = asOptionalNumber(match.characterNum ?? match.character_num)
+  const participant =
+    participants.find(
+      (item) => nickname && asString(item.nickname ?? item.userNickname ?? item.user_nickname) === nickname,
+    ) ??
+    participants.find(
+      (item) =>
+        characterNum !== undefined &&
+        asOptionalNumber(item.characterNum ?? item.character_num) === characterNum,
+    ) ??
+    participants[0]
+
+  if (!participant) {
+    return {}
+  }
+
+  const routeValue =
+    participant.routeId ??
+    participant.route_id ??
+    participant.routeNumber ??
+    participant.route_number ??
+    participant.routeNo ??
+    participant.route_no ??
+    participant.routeNum ??
+    participant.route_num ??
+    participant.routeCode ??
+    participant.route_code
+
+  return {
+    routeNumber: asOptionalNumber(routeValue),
+    isRoutePrivate: routeValue === null,
+    subTraitStyle:
+      asString(participant.subTraitStyle ?? participant.sub_trait_style) || undefined,
+  }
+}
+
+function getMatchDetailById(detailsByGameId: unknown, matchId: string) {
+  if (!isRecord(detailsByGameId) || !matchId) {
+    return undefined
+  }
+
+  return detailsByGameId[matchId]
 }
 
 function firstOptionalNumber(...values: unknown[]) {
@@ -447,6 +601,7 @@ function normalizePlayerSearchResponse(value: unknown): PlayerSearchResult {
   const profileSource = isRecord(data.profile) ? data.profile : data
   const userSource = isRecord(data.user) ? data.user : profileSource
   const gamesSource = isRecord(data.games) ? data.games : data
+  const detailsByGameId = gamesSource.detailsByGameId ?? gamesSource.details_by_game_id
   const rankSource = isRecord(data.rank) ? data.rank : {}
   const userRankSource = isRecord(rankSource.userRank) ? rankSource.userRank : rankSource
   const matches = asArray(
@@ -455,7 +610,7 @@ function normalizePlayerSearchResponse(value: unknown): PlayerSearchResult {
       data.recent_matches ??
       gamesSource.games,
   )
-    .map(normalizeMatch)
+    .map((match) => normalizeMatch(match, getMatchDetailById(detailsByGameId, asIdString(isRecord(match) ? match.gameId ?? match.game_id ?? match.matchId ?? match.match_id ?? match.id : ''))))
     .filter((match) => match.matchId || match.character)
   const responseStats = normalizeStats(
     data.recentStats ?? data.stats ?? data.seasonStats ?? data.season_stats,
@@ -486,6 +641,7 @@ function normalizePlayerSearchResponse(value: unknown): PlayerSearchResult {
       userId: asString(userSource.userId ?? userSource.user_id),
       userNum: asNumber(userSource.userNum ?? userSource.user_num, 0) || undefined,
       nickname: asString(userSource.nickname ?? userSource.name),
+      tier: normalizeTier(userRankSource, rankSource, userSource, profileSource),
       mmr:
         asNumber(userRankSource.rankScore ?? userRankSource.mmr ?? userRankSource.rp, 0) ||
         undefined,
@@ -507,7 +663,7 @@ function normalizePlayerGamesResponse(value: unknown) {
 
   return {
     matches: asArray(data.games ?? data.userGames ?? data.user_games)
-      .map(normalizeMatch)
+      .map((match) => normalizeMatch(match, getMatchDetailById(data.detailsByGameId ?? data.details_by_game_id, asIdString(isRecord(match) ? match.gameId ?? match.game_id ?? match.matchId ?? match.match_id ?? match.id : ''))))
       .filter((match) => match.matchId || match.character),
     next: asIdString(data.next),
   }

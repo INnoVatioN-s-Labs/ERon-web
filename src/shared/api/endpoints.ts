@@ -8,6 +8,7 @@ const matchingTeamMode = Number(
 const matchLimit = Number(import.meta.env.VITE_ER_MATCH_LIMIT ?? 50)
 
 export const apiEndpoints = {
+  currentCharacterMeta: '/api/er/meta/current/characters',
   skinMetadata: '/api/er/meta/skins',
   rankingTop10: [
     `/api/er/rankings/top?seasonId=${seasonId}&matchingTeamMode=${matchingTeamMode}`,
@@ -21,8 +22,15 @@ export const apiEndpoints = {
   },
   matchDetail: (gameId: string | number) => `/api/er/games/${gameId}`,
   playerGames: (userId: string, next?: string) => {
-    const query = next ? `?next=${encodeURIComponent(next)}` : ''
+    const query = new URLSearchParams({
+      includeDetails: 'true',
+      detailLimit: '5',
+    })
 
-    return `/api/er/users/${encodeURIComponent(userId)}/games${query}`
+    if (next) {
+      query.set('next', next)
+    }
+
+    return `/api/er/users/${encodeURIComponent(userId)}/games?${query.toString()}`
   },
 }
