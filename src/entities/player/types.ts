@@ -2,6 +2,7 @@ export type PlayerProfile = {
   userId: string
   userNum?: number
   nickname: string
+  tier?: string
   mmr?: number
   rank?: number
   updatedAt: string
@@ -39,11 +40,16 @@ export type PlayerMatch = {
   bestWeaponLevel?: number
   tacticalSkillGroupCode?: number
   tacticalSkill?: string
+  subTraitStyle?: string
   traits?: Array<{
     traitCode?: number
+    traitIconCode?: number
     traitName: string
+    category?: string
     slot?: 'main' | 'sub'
   }>
+  routeNumber?: number
+  isRoutePrivate?: boolean
   rank: number
   kills: number
   deaths: number

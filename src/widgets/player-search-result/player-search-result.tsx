@@ -8,6 +8,11 @@ import type { SkinMetadata } from '@/entities/character/api'
 import { loadPlayerMatches } from '@/entities/player/api'
 import type { PlayerMatch, PlayerSearchResult } from '@/entities/player/types'
 import { loadCharacterMiniPortrait } from '@/shared/lib/character-mini-portrait'
+import {
+  getTacticalSkillIcon,
+  getTraitIcon,
+  getTraitStyleIcon,
+} from '@/shared/lib/match-build-icon'
 import { cn } from '@/shared/lib/utils'
 import { Badge } from '@/shared/ui/badge'
 import { Button } from '@/shared/ui/button'
@@ -56,20 +61,10 @@ export function PlayerSearchResultView({
 }: PlayerSearchResultProps) {
   const [selectedMatchFilter, setSelectedMatchFilter] = useState<MatchFilter>('all')
   const [visibleMatchCount, setVisibleMatchCount] = useState(INITIAL_VISIBLE_MATCH_COUNT)
-  const [loadedMatches, setLoadedMatches] = useState<PlayerMatch[]>([])
-  const [nextCursor, setNextCursor] = useState('')
+  const [loadedMatches, setLoadedMatches] = useState<PlayerMatch[]>(result?.matches ?? [])
+  const [nextCursor, setNextCursor] = useState(result?.next ?? '')
   const [isLoadingMore, setIsLoadingMore] = useState(false)
   const [loadMoreError, setLoadMoreError] = useState('')
-  const resultKey = getResultKey(result)
-  const [loadedResultKey, setLoadedResultKey] = useState(resultKey)
-
-  if (resultKey !== loadedResultKey) {
-    setLoadedResultKey(resultKey)
-    setLoadedMatches(result?.matches ?? [])
-    setNextCursor(result?.next ?? '')
-    setVisibleMatchCount(INITIAL_VISIBLE_MATCH_COUNT)
-    setLoadMoreError('')
-  }
 
   if (!searchedNickname) {
     return (
@@ -168,27 +163,45 @@ export function PlayerSearchResultView({
   const hasMoreMatches = visibleMatchCount < filteredMatches.length || Boolean(nextCursor)
 
   return (
-    <div className="grid gap-5 lg:grid-cols-[0.92fr_1.08fr]">
+    <div className="grid gap-5 lg:grid-cols-[460px_minmax(0,1fr)]">
       <Card>
         <CardHeader>
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-            <div>
-              <CardTitle className="text-xl">{result.profile.nickname}</CardTitle>
-              <CardDescription>
-                {result.profile.userId || result.profile.userNum || '-'}
-              </CardDescription>
+          <div className="space-y-3">
+            <div className="flex min-w-0 items-start justify-between gap-3">
+              <div className="min-w-0">
+                <CardTitle className="truncate text-xl" title={result.profile.nickname}>
+                  {result.profile.nickname}
+                </CardTitle>
+                <CardDescription className="truncate" title={String(result.profile.userId || result.profile.userNum || '-')}>
+                  {result.profile.userId || result.profile.userNum || '-'}
+                </CardDescription>
+              </div>
+              <Badge
+                className="mt-0.5 max-w-32 shrink-0 truncate"
+                title={result.profile.tier ?? '티어 -'}
+                variant={result.profile.tier ? 'secondary' : 'outline'}
+              >
+                {result.profile.tier ?? '티어 -'}
+              </Badge>
             </div>
-            <div className="flex flex-wrap gap-2">
-              {result.profile.rank ? <Badge>#{result.profile.rank}</Badge> : null}
-              {result.profile.mmr ? (
-                <Badge variant="secondary">{result.profile.mmr.toLocaleString()} RP</Badge>
-              ) : null}
+            <div className="grid grid-cols-2 gap-2">
+              <div className="rounded-lg border border-border/80 bg-muted/35 px-3 py-2">
+                <p className="text-xs text-muted-foreground">랭킹</p>
+                <p className="mt-0.5 font-semibold">
+                  {result.profile.rank ? `#${result.profile.rank}` : '-'}
+                </p>
+              </div>
+              <div className="rounded-lg border border-border/80 bg-muted/35 px-3 py-2">
+                <p className="text-xs text-muted-foreground">RP</p>
+                <p className="mt-0.5 font-semibold">
+                  {result.profile.mmr ? result.profile.mmr.toLocaleString() : '-'}
+                </p>
+              </div>
             </div>
           </div>
         </CardHeader>
         <CardContent className="space-y-5">
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-            <Stat label="랭킹" value={result.profile.rank ? `#${result.profile.rank}` : '-'} />
             <Stat label="평균 TK" value={formatNumber(result.stats?.averageTeamKills)} />
             <Stat label="승률" value={formatPercent(result.stats?.winRate)} />
             <Stat label="시즌 게임 수" value={formatInteger(result.stats?.totalGames)} />
@@ -354,7 +367,7 @@ function MatchPanel({ match, nickname }: { match: PlayerMatch; nickname: string 
 
   return (
     <div className="rounded-lg border border-border/80 bg-muted/35 p-3">
-      <div className="grid gap-4 sm:grid-cols-[112px_1fr_auto]">
+      <div className="grid grid-cols-[80px_minmax(0,1fr)_auto] gap-3 sm:grid-cols-[112px_1fr_auto] sm:gap-4">
         <div className="flex aspect-square overflow-hidden rounded-md border border-primary/20 bg-[radial-gradient(circle_at_50%_30%,hsl(var(--primary)/0.24),hsl(var(--background))_70%)]">
           <MatchCharacterPortrait
             characterName={match.character}
@@ -364,19 +377,27 @@ function MatchPanel({ match, nickname }: { match: PlayerMatch; nickname: string 
           />
         </div>
         <div className="flex min-w-0 flex-col justify-between gap-3">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
+          <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
               <Badge variant={getResultBadgeVariant(match)}>
                 {getResultLabel(match)}
               </Badge>
               <Badge variant="outline">{match.mode || '-'}</Badge>
-              <p className="font-semibold">{match.character || '-'}</p>
+              <div className="flex shrink-0 items-center gap-2">
+                <p className="font-semibold">{match.character || '-'}</p>
+                {!isCobaltResult(match) ? (
+                  <MatchRouteInfo
+                    isPrivate={match.isRoutePrivate}
+                    routeNumber={match.routeNumber}
+                  />
+                ) : null}
+              </div>
             </div>
-            <span className="text-xs text-muted-foreground">
+            <span className="whitespace-nowrap text-xs text-muted-foreground">
               {formatMatchDateTime(match.playedAt)}
             </span>
           </div>
-          <div className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
+          <div className="grid grid-cols-2 gap-2 text-sm md:grid-cols-4">
             <MiniStat label="K/D/A" value={`${match.kills}/${match.deaths}/${match.assists}`} />
             <MiniStat label="피해량" value={match.damage.toLocaleString()} />
             <MiniStat label="TK" value={formatNumber(match.teamKills)} />
@@ -386,9 +407,9 @@ function MatchPanel({ match, nickname }: { match: PlayerMatch; nickname: string 
               <MiniStat label="평점(KDA)" value={formatNumber(getKdaScore(match))} />
             )}
           </div>
-          <MatchBuildSummary participant={match} />
+          <MatchBuildSummary isCobalt={isCobaltResult(match)} participant={match} />
         </div>
-        <div className="flex items-center justify-end">
+        <div className="flex items-start justify-end sm:items-center">
           <Button
             aria-expanded={isOpen}
             aria-label="경기 상세 보기"
@@ -443,17 +464,11 @@ function MatchPanel({ match, nickname }: { match: PlayerMatch; nickname: string 
                       <span className="text-sm text-muted-foreground">장비 정보 없음</span>
                     )}
                   </div>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {myParticipant?.traits.length ? (
-                      myParticipant.traits.map((trait) => (
-                        <Badge key={trait.traitCode ?? trait.traitName} variant="secondary">
-                          {trait.traitName}
-                        </Badge>
-                      ))
-                    ) : (
-                      <span className="text-sm text-muted-foreground">특성 정보 없음</span>
-                    )}
-                  </div>
+                  <TraitBadgeList
+                    isCobalt={isCobaltResult(match)}
+                    subTraitStyle={myParticipant?.subTraitStyle}
+                    traits={myParticipant?.traits ?? []}
+                  />
                 </div>
                 <div className="rounded-lg border border-border/80 bg-background/35 p-4">
                   <h4 className="text-sm font-semibold">경기 정보</h4>
@@ -687,14 +702,24 @@ function RankPointStat({ match }: { match: PlayerMatch }) {
 }
 
 function MatchBuildSummary({
+  isCobalt = false,
   participant,
 }: {
+  isCobalt?: boolean
   participant?: {
     bestWeapon?: number
     bestWeaponName?: string
     bestWeaponLevel?: number
+    tacticalSkillGroupCode?: number
     tacticalSkill?: string
-    traits?: Array<{ traitName: string; slot?: 'main' | 'sub' }>
+    subTraitStyle?: string
+    traits?: Array<{
+      category?: string
+      traitCode?: number
+      traitIconCode?: number
+      traitName: string
+      slot?: 'main' | 'sub'
+    }>
   }
 }) {
   const traits = participant?.traits ?? []
@@ -703,32 +728,131 @@ function MatchBuildSummary({
   const secondaryTraits = subTraits.length > 0 ? subTraits : traits.slice(1)
 
   return (
-    <div className="grid gap-4 border-t border-border/70 pt-3 text-sm sm:grid-cols-[minmax(0,1fr)_minmax(12rem,0.8fr)]">
-      <div className="space-y-2">
-        <BuildInfo
-          label="무기"
-          value={
-            participant?.bestWeaponName ||
-            (participant?.bestWeapon
-              ? `${participant.bestWeapon} Lv.${participant.bestWeaponLevel ?? '-'}`
-              : '-')
-          }
-        />
-        <BuildInfo label="전술 스킬" value={participant?.tacticalSkill || '-'} />
-      </div>
-      <div className="grid grid-cols-2 gap-3 border-border/70 sm:border-l sm:pl-4">
-        <BuildInfo label="주 특성" value={getTraitNames(mainTrait ? [mainTrait] : [])} />
-        <BuildInfo label="보조 특성" value={getTraitNames(secondaryTraits)} />
-      </div>
+    <div className="grid grid-cols-2 gap-2 border-t border-border/70 pt-3 text-sm xl:grid-cols-4">
+      <BuildInfo
+        label="무기"
+        value={
+          participant?.bestWeaponName ||
+          (participant?.bestWeapon
+            ? `${participant.bestWeapon} Lv.${participant.bestWeaponLevel ?? '-'}`
+            : '-')
+        }
+      />
+      <BuildInfo
+        iconSrc={getTacticalSkillIcon(
+          participant?.tacticalSkillGroupCode,
+          participant?.tacticalSkill,
+        )}
+        label="전술 스킬"
+        value={participant?.tacticalSkill || '-'}
+      />
+      <BuildInfo
+        iconSrc={getTraitIcon(mainTrait)}
+        label="주 특성"
+        value={getTraitNames(mainTrait ? [mainTrait] : [])}
+      />
+      <BuildInfo
+        iconSrc={
+          isCobalt
+            ? undefined
+            : getTraitStyleIcon(getTraitCategories(secondaryTraits, participant?.subTraitStyle))
+        }
+        label="보조 특성"
+        value={isCobalt ? '-' : getTraitCategories(secondaryTraits, participant?.subTraitStyle)}
+      />
     </div>
   )
 }
 
-function BuildInfo({ label, value }: { label: string; value: string }) {
+function MatchRouteInfo({
+  isPrivate,
+  routeNumber,
+}: {
+  isPrivate?: boolean
+  routeNumber?: number
+}) {
+  const value =
+    isPrivate || routeNumber === 0
+      ? '비공개'
+      : routeNumber === undefined
+        ? '-'
+        : String(routeNumber)
+
   return (
-    <div>
-      <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="mt-0.5 break-words font-semibold">{value}</p>
+    <div className="border-l border-border/70 pl-2 leading-none">
+      <p className="text-[10px] font-medium text-muted-foreground">루트 번호</p>
+      <p
+        className={cn(
+          'mt-0.5 text-xs font-semibold leading-none',
+          value === '비공개' ? 'text-muted-foreground' : 'text-foreground',
+        )}
+      >
+        {value}
+      </p>
+    </div>
+  )
+}
+
+function TraitBadgeList({
+  isCobalt = false,
+  subTraitStyle,
+  traits,
+}: {
+  isCobalt?: boolean
+  subTraitStyle?: string
+  traits: Array<{
+    category?: string
+    traitCode?: number
+    traitIconCode?: number
+    traitName: string
+    slot?: 'main' | 'sub'
+  }>
+}) {
+  const labels = getCompactTraitLabels(traits, subTraitStyle, isCobalt)
+
+  if (labels.length === 0) {
+    return (
+      <div className="mt-3">
+        <span className="text-sm text-muted-foreground">특성 정보 없음</span>
+      </div>
+    )
+  }
+
+  return (
+    <div className="mt-3 flex flex-wrap gap-2">
+      {labels.map((label) => (
+        <Badge key={label} variant="secondary">
+          {label}
+        </Badge>
+      ))}
+    </div>
+  )
+}
+
+function BuildInfo({
+  iconSrc,
+  label,
+  value,
+}: {
+  iconSrc?: string
+  label: string
+  value: string
+}) {
+  return (
+    <div className="min-w-0 rounded-md bg-background/20 px-2.5 py-2">
+      <p className="whitespace-nowrap text-xs text-muted-foreground">{label}</p>
+      <div className="mt-1 flex min-w-0 items-center gap-1.5">
+        {iconSrc ? (
+          <img
+            alt=""
+            className="size-5 shrink-0 rounded-sm border border-border/70 bg-background/60 object-cover"
+            src={iconSrc}
+          />
+        ) : null}
+        <p className="min-w-0 truncate font-semibold" title={value}>
+          {value}
+        </p>
+      </div>
     </div>
   )
 }
@@ -739,12 +863,73 @@ function getTraitNames(traits: Array<{ traitName: string }>) {
   return names.length > 0 ? names.join(' · ') : '-'
 }
 
-function getResultKey(result?: PlayerSearchResult) {
-  if (!result) {
-    return ''
+function getTraitCategories(
+  traits: Array<{ category?: string; traitName: string }>,
+  subTraitStyle?: string,
+) {
+  const resolvedSubTraitStyle = normalizeTraitCategory(subTraitStyle)
+
+  if (resolvedSubTraitStyle) {
+    return resolvedSubTraitStyle
   }
 
-  return `${result.profile.userId}:${result.matches[0]?.matchId ?? ''}:${result.next ?? ''}`
+  const categories = [
+    ...new Set(
+      traits
+        .map((trait) => normalizeTraitCategory(trait.category) ?? normalizeTraitCategory(trait.traitName))
+        .filter((category): category is string => Boolean(category)),
+    ),
+  ]
+
+  return categories.length > 0 ? categories.join(' · ') : '-'
+}
+
+function getCompactTraitLabels(
+  traits: Array<{ category?: string; traitName: string; slot?: 'main' | 'sub' }>,
+  subTraitStyle?: string,
+  hideSecondaryTraits = false,
+) {
+  const mainTrait = traits.find((trait) => trait.slot === 'main') ?? traits[0]
+  const subTraits = traits.filter((trait) => trait.slot === 'sub')
+  const secondaryTraits = subTraits.length > 0 ? subTraits : traits.slice(1)
+  const secondaryCategories = hideSecondaryTraits
+    ? '-'
+    : getTraitCategories(secondaryTraits, subTraitStyle)
+
+  return [
+    mainTrait?.traitName,
+    secondaryCategories === '-' ? undefined : secondaryCategories,
+  ].filter((label): label is string => Boolean(label))
+}
+
+function normalizeTraitCategory(value?: string): string | undefined {
+  const normalizedValue = value?.toLowerCase().replace(/[^a-z0-9가-힣]/g, '') ?? ''
+
+  if (!normalizedValue) {
+    return undefined
+  }
+
+  if (normalizedValue.includes('파괴') || normalizedValue.includes('destruction')) {
+    return '파괴'
+  }
+
+  if (normalizedValue.includes('혼돈') || normalizedValue.includes('chaos')) {
+    return '혼돈'
+  }
+
+  if (
+    normalizedValue.includes('저항') ||
+    normalizedValue.includes('resistance') ||
+    normalizedValue.includes('resist')
+  ) {
+    return '저항'
+  }
+
+  if (normalizedValue.includes('지원') || normalizedValue.includes('support')) {
+    return '지원'
+  }
+
+  return undefined
 }
 
 function getCharacterStats(matches: PlayerMatch[]) {

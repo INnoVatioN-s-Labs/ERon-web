@@ -51,8 +51,8 @@ export function PlayerPage() {
       <section className="mx-auto max-w-7xl px-5 py-8 sm:px-8">
         <PlayerSearchResultView
           error={playerQuery.error}
-          isLoading={playerQuery.isFetching}
-          key={decodedNickname}
+          isLoading={playerQuery.isFetching && !playerQuery.data}
+          key={`${decodedNickname}:${playerQuery.data ? 'data' : 'empty'}`}
           result={playerQuery.data}
           searchedNickname={decodedNickname}
         />

@@ -59,6 +59,8 @@ function normalizeTrait(
 
   return {
     traitCode: asNumber(value.traitCode ?? value.code ?? value.traitType, 0) || undefined,
+    traitIconCode:
+      asNumber(value.traitIconCode ?? value.trait_icon_code, 0) || undefined,
     traitName,
     category: asString(
       value.category ??
@@ -120,6 +122,17 @@ function normalizeParticipant(value: unknown): MatchParticipant {
       equipment: {},
     }
   }
+  const routeValue =
+    value.routeId ??
+    value.route_id ??
+    value.routeNumber ??
+    value.route_number ??
+    value.routeNo ??
+    value.route_no ??
+    value.routeNum ??
+    value.route_num ??
+    value.routeCode ??
+    value.route_code
 
   return {
     nickname: asString(value.nickname ?? value.userNickname ?? value.user_nickname),
@@ -151,6 +164,19 @@ function normalizeParticipant(value: unknown): MatchParticipant {
     tacticalSkillGroupCode:
       asNumber(value.tacticalSkillGroupCode ?? value.tactical_skill_group_code, 0) || undefined,
     tacticalSkill: asString(value.tacticalSkill ?? value.tacticalSkillName),
+    subTraitStyle: asString(value.subTraitStyle ?? value.sub_trait_style) || undefined,
+    routeNumber: asOptionalNumber(routeValue),
+    isRoutePrivate:
+      asBoolean(
+        value.isRoutePrivate ??
+          value.is_route_private ??
+          value.routePrivate ??
+          value.route_private ??
+          value.privateRoute ??
+          value.private_route ??
+          value.isPrivateRoute ??
+          value.is_private_route,
+      ) ?? (routeValue == null),
     traits: normalizeTraits(value),
     equipment: normalizeEquipment(value.equipment),
   }
